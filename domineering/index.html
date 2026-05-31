@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Domineering — Vertical vs Horizontal</title>
+<meta name="description" content="Domineering, the domino-placing strategy game by Göran Andersson (1973). Two players, vertical vs horizontal, on an 8×8 board.">
+<style>
+  :root {
+    --bg-top: #d98a47;
+    --bg-bot: #b9622a;
+    --board-line: #f5ede4;
+    --cell: rgba(255,255,255,0.04);
+    --v-color: #2e6fd6;
+    --v-color-d: #1f4f9c;
+    --h-color: #d64a3a;
+    --h-color-d: #9c2f23;
+    --piece: #232323;
+    --piece-edge: #050505;
+    --text: #fdf6ee;
+    --accent: #bfe0ff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    min-height: 100%;
+    font-family: Georgia, 'Times New Roman', serif;
+    color: var(--text);
+    background: linear-gradient(160deg, var(--bg-top), var(--bg-bot));
+    background-attachment: fixed;
+  }
+  body {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 18px 14px 40px;
+  }
+  h1 {
+    font-size: clamp(1.6rem, 5vw, 2.4rem);
+    margin: 4px 0 2px; letter-spacing: 1px; font-weight: 700;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  }
+  .subtitle { font-size: 0.85rem; opacity: 0.85; margin: 0 0 14px; font-style: italic; }
+
+  /* Status / turn banner */
+  .status {
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 14px;
+    padding: 12px 18px; margin-bottom: 16px;
+    min-width: 280px; justify-content: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+  }
+  .turn-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-weight: 700; font-size: 1.1rem;
+  }
+  .swatch {
+    width: 16px; height: 28px; border-radius: 3px;
+    border: 2px solid var(--piece-edge);
+    background: var(--piece);
+  }
+  .swatch.v { box-shadow: inset 0 0 0 2px var(--v-color); }
+  .swatch.h { width: 28px; height: 16px; box-shadow: inset 0 0 0 2px var(--h-color); }
+  .status-text { font-family: Georgia, serif; }
+  .status-text strong { letter-spacing: 0.5px; }
+
+  /* Board */
+  .board-wrap {
+    position: relative;
+    padding: 10px;
+    background: rgba(0,0,0,0.12);
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.28);
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    gap: 0;
+    width: min(88vw, 520px);
+    height: min(88vw, 520px);
+    border: 3px solid var(--board-line);
+    background: var(--board-line);
+  }
+  .cell {
+    position: relative;
+    background: var(--bg-top);
+    border: 1px solid var(--board-line);
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .cell.filled { cursor: default; }
+  /* hover preview */
+  .cell.preview-v, .cell.preview-h { background: rgba(255,255,255,0.16); }
+  .cell.preview-invalid { background: rgba(0,0,0,0.22); }
+
+  /* placed domino piece — rendered as overlay spanning two cells */
+  .piece {
+    position: absolute;
+    border-radius: 7px;
+    background: linear-gradient(145deg, #3a3a3a, #161616);
+    border: 1px solid var(--piece-edge);
+    box-shadow: 0 3px 6px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.12);
+    z-index: 5;
+    animation: drop 0.18s ease-out;
+    pointer-events: none;
+  }
+  .piece.v { border-top: 3px solid var(--v-color); border-bottom: 3px solid var(--v-color-d); }
+  .piece.h { border-left: 3px solid var(--h-color); border-right: 3px solid var(--h-color-d); }
+  @keyframes drop {
+    from { transform: scale(0.6); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+
+  /* Controls */
+  .controls {
+    display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+    margin-top: 18px;
+  }
+  button.btn {
+    font-family: Georgia, serif;
+    font-size: 0.95rem;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.1);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+  }
+  button.btn:hover { background: rgba(255,255,255,0.2); }
+  button.btn:active { transform: translateY(1px); }
+  button.btn.primary {
+    background: var(--accent); color: #0a2540; font-weight: 700;
+    border-color: var(--accent);
+  }
+
+  /* Scoreboard */
+  .scoreboard {
+    display: flex; gap: 14px; margin-top: 16px; flex-wrap: wrap; justify-content: center;
+  }
+  .score-card {
+    background: rgba(0,0,0,0.16);
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 12px;
+    padding: 10px 16px; text-align: center; min-width: 130px;
+  }
+  .score-card.active { box-shadow: 0 0 0 2px var(--accent); }
+  .score-card .label { font-size: 0.78rem; opacity: 0.85; display: flex; align-items: center; gap: 6px; justify-content: center; }
+  .score-card .count { font-size: 1.5rem; font-weight: 700; }
+  .score-card .moves { font-size: 0.72rem; opacity: 0.7; }
+
+  /* Rules accordion */
+  details.rules {
+    margin-top: 22px; max-width: 540px; width: 100%;
+    background: rgba(0,0,0,0.14);
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 12px; padding: 4px 16px;
+  }
+  details.rules summary {
+    cursor: pointer; padding: 10px 0; font-weight: 700; font-size: 1.05rem;
+    list-style: none; outline: none;
+  }
+  details.rules summary::-webkit-details-marker { display: none; }
+  details.rules summary::before { content: "▸ "; }
+  details.rules[open] summary::before { content: "▾ "; }
+  details.rules p, details.rules li { font-size: 0.9rem; line-height: 1.5; opacity: 0.92; }
+  details.rules .meta { font-size: 0.8rem; opacity: 0.7; font-style: italic; }
+
+  /* Winner overlay */
+  .overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.62);
+    display: none; align-items: center; justify-content: center;
+    backdrop-filter: blur(3px);
+  }
+  .overlay.show { display: flex; animation: fade 0.25s; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .modal {
+    background: linear-gradient(160deg, var(--bg-top), var(--bg-bot));
+    border: 2px solid rgba(255,255,255,0.25);
+    border-radius: 18px;
+    padding: 30px 36px; text-align: center; max-width: 90vw;
+    box-shadow: 0 14px 50px rgba(0,0,0,0.5);
+  }
+  .modal h2 { margin: 0 0 8px; font-size: 1.8rem; }
+  .modal p { margin: 6px 0 18px; opacity: 0.92; }
+  .modal .winner-swatch { display: inline-block; vertical-align: middle; margin-right: 6px; }
+
+  @media (max-width: 420px) {
+    .status { min-width: auto; width: 100%; }
+  }
+</style>
+</head>
+<body>
+  <h1>Domineering</h1>
+  <p class="subtitle">Vertical vs Horizontal · Göran Andersson, 1973</p>
+
+  <div class="status">
+    <span class="status-text">Turn:</span>
+    <span class="turn-chip" id="turnChip">
+      <span class="swatch v" id="turnSwatch"></span>
+      <span id="turnName">Vertical</span>
+    </span>
+  </div>
+
+  <div class="board-wrap">
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="scoreboard">
+    <div class="score-card" id="cardV">
+      <div class="label"><span class="swatch v" style="width:11px;height:18px;"></span> Vertical (Blue)</div>
+      <div class="count" id="scoreV">0</div>
+      <div class="moves">pieces placed</div>
+    </div>
+    <div class="score-card" id="cardH">
+      <div class="label"><span class="swatch h" style="width:18px;height:11px;"></span> Horizontal (Red)</div>
+      <div class="count" id="scoreH">0</div>
+      <div class="moves">pieces placed</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn primary" id="newGameBtn">New Game</button>
+    <button class="btn" id="undoBtn">Undo</button>
+  </div>
+
+  <details class="rules">
+    <summary>How to play</summary>
+    <p><strong>Objective.</strong> Be the last player able to place a domino. The player who cannot make a legal move loses.</p>
+    <p><strong>Rules.</strong> Two players take turns placing a single domino, which covers two orthogonally adjacent empty squares of the 8×8 board.</p>
+    <ul>
+      <li><strong>Vertical</strong> (Blue) may only place dominoes <em>vertically</em> — covering a square and the one directly below it.</li>
+      <li><strong>Horizontal</strong> (Red) may only place dominoes <em>horizontally</em> — covering a square and the one directly to its right.</li>
+    </ul>
+    <p>Tap a square to place your piece. Vertical anchors at the top square; Horizontal anchors at the left square. The game ends the moment the player whose turn it is has no legal move — and that player loses.</p>
+    <p class="meta">Material: 1 square 8×8 board, plenty of dominoes (~32). Human vs Human.</p>
+  </details>
+
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <h2 id="winTitle">Vertical wins!</h2>
+      <p id="winText"></p>
+      <button class="btn primary" id="playAgainBtn">Play Again</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  const SIZE = 8;
+  const VERTICAL = "V";
+  const HORIZONTAL = "H";
+
+  const boardEl = document.getElementById("board");
+  const turnNameEl = document.getElementById("turnName");
+  const turnSwatchEl = document.getElementById("turnSwatch");
+  const scoreVEl = document.getElementById("scoreV");
+  const scoreHEl = document.getElementById("scoreH");
+  const cardVEl = document.getElementById("cardV");
+  const cardHEl = document.getElementById("cardH");
+  const overlayEl = document.getElementById("overlay");
+  const winTitleEl = document.getElementById("winTitle");
+  const winTextEl = document.getElementById("winText");
+
+  let grid;          // SIZE x SIZE booleans, true = occupied
+  let cells;         // SIZE x SIZE DOM nodes
+  let current;       // VERTICAL or HORIZONTAL
+  let scores;        // { V: n, H: n }
+  let history;       // stack of placed pieces for undo
+  let gameOver;
+
+  function idx(r, c) { return r * SIZE + c; }
+
+  function inBounds(r, c) { return r >= 0 && r < SIZE && c >= 0 && c < SIZE; }
+
+  // The two cells a piece would occupy if anchored at (r,c) for given player.
+  function targetCells(r, c, player) {
+    if (player === VERTICAL) return [[r, c], [r + 1, c]];
+    return [[r, c], [r, c + 1]];
+  }
+
+  function canPlace(r, c, player) {
+    const t = targetCells(r, c, player);
+    for (const [rr, cc] of t) {
+      if (!inBounds(rr, cc) || grid[rr][cc]) return false;
+    }
+    return true;
+  }
+
+  function hasAnyMove(player) {
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (canPlace(r, c, player)) return true;
+      }
+    }
+    return false;
+  }
+
+  function playerName(player) { return player === VERTICAL ? "Vertical" : "Horizontal"; }
+
+  function buildBoard() {
+    boardEl.innerHTML = "";
+    cells = [];
+    for (let r = 0; r < SIZE; r++) {
+      const row = [];
+      for (let c = 0; c < SIZE; c++) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        cell.addEventListener("click", onCellClick);
+        cell.addEventListener("mouseenter", onCellEnter);
+        cell.addEventListener("mouseleave", clearPreview);
+        boardEl.appendChild(cell);
+        row.push(cell);
+      }
+      cells.push(row);
+    }
+  }
+
+  function newGame() {
+    grid = Array.from({ length: SIZE }, () => Array(SIZE).fill(false));
+    current = VERTICAL;
+    scores = { V: 0, H: 0 };
+    history = [];
+    gameOver = false;
+    // clear all cells + pieces
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        cells[r][c].className = "cell";
+      }
+    }
+    document.querySelectorAll(".piece").forEach(p => p.remove());
+    overlayEl.classList.remove("show");
+    render();
+  }
+
+  function render() {
+    turnNameEl.textContent = playerName(current);
+    turnSwatchEl.className = "swatch " + (current === VERTICAL ? "v" : "h");
+    scoreVEl.textContent = scores.V;
+    scoreHEl.textContent = scores.H;
+    cardVEl.classList.toggle("active", current === VERTICAL && !gameOver);
+    cardHEl.classList.toggle("active", current === HORIZONTAL && !gameOver);
+  }
+
+  function onCellEnter(e) {
+    if (gameOver) return;
+    clearPreview();
+    const r = +e.currentTarget.dataset.r;
+    const c = +e.currentTarget.dataset.c;
+    if (canPlace(r, c, current)) {
+      const cls = current === VERTICAL ? "preview-v" : "preview-h";
+      for (const [rr, cc] of targetCells(r, c, current)) {
+        cells[rr][cc].classList.add(cls);
+      }
+    } else if (!grid[r][c]) {
+      e.currentTarget.classList.add("preview-invalid");
+    }
+  }
+
+  function clearPreview() {
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        cells[r][c].classList.remove("preview-v", "preview-h", "preview-invalid");
+      }
+    }
+  }
+
+  function onCellClick(e) {
+    if (gameOver) return;
+    const r = +e.currentTarget.dataset.r;
+    const c = +e.currentTarget.dataset.c;
+    if (!canPlace(r, c, current)) return;
+    placePiece(r, c, current);
+  }
+
+  function placePiece(r, c, player) {
+    const t = targetCells(r, c, player);
+    for (const [rr, cc] of t) {
+      grid[rr][cc] = true;
+      cells[rr][cc].classList.add("filled");
+    }
+    const pieceEl = drawPiece(r, c, player);
+    history.push({ r, c, player, t, pieceEl });
+    scores[player]++;
+    clearPreview();
+
+    // Switch turn, then check if the next player can move.
+    current = player === VERTICAL ? HORIZONTAL : VERTICAL;
+    render();
+
+    if (!hasAnyMove(current)) {
+      endGame(player); // the player who just moved is the winner
+    }
+  }
+
+  // Draw an overlay piece positioned over its two cells using percentages.
+  function drawPiece(r, c, player) {
+    const piece = document.createElement("div");
+    piece.className = "piece " + (player === VERTICAL ? "v" : "h");
+    const cellPct = 100 / SIZE;
+    const pad = 0.9; // inset percentage of one cell for nice margins
+    if (player === VERTICAL) {
+      piece.style.left = (c * cellPct + pad) + "%";
+      piece.style.top = (r * cellPct + pad) + "%";
+      piece.style.width = (cellPct - 2 * pad) + "%";
+      piece.style.height = (2 * cellPct - 2 * pad) + "%";
+    } else {
+      piece.style.left = (c * cellPct + pad) + "%";
+      piece.style.top = (r * cellPct + pad) + "%";
+      piece.style.width = (2 * cellPct - 2 * pad) + "%";
+      piece.style.height = (cellPct - 2 * pad) + "%";
+    }
+    boardEl.appendChild(piece);
+    return piece;
+  }
+
+  function undo() {
+    if (gameOver) {
+      // allow undo to resume after game over
+      overlayEl.classList.remove("show");
+      gameOver = false;
+    }
+    const last = history.pop();
+    if (!last) { render(); return; }
+    for (const [rr, cc] of last.t) {
+      grid[rr][cc] = false;
+      cells[rr][cc].classList.remove("filled");
+    }
+    last.pieceEl.remove();
+    scores[last.player]--;
+    current = last.player; // restore the turn of whoever placed it
+    render();
+  }
+
+  function endGame(winner) {
+    gameOver = true;
+    const loser = winner === VERTICAL ? HORIZONTAL : VERTICAL;
+    render();
+    const wName = playerName(winner);
+    const sw = winner === VERTICAL ? "v" : "h";
+    winTitleEl.innerHTML = '<span class="swatch ' + sw + ' winner-swatch" style="display:inline-block;width:14px;height:24px;"></span> ' + wName + " wins!";
+    winTextEl.textContent = playerName(loser) + " has no legal move left. " +
+      wName + " placed the last domino.";
+    overlayEl.classList.add("show");
+  }
+
+  // Wire up controls
+  document.getElementById("newGameBtn").addEventListener("click", newGame);
+  document.getElementById("playAgainBtn").addEventListener("click", newGame);
+  document.getElementById("undoBtn").addEventListener("click", undo);
+
+  // Init
+  buildBoard();
+  newGame();
+})();
+</script>
+</body>
+</html>
